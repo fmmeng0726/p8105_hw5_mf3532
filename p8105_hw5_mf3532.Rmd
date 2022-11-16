@@ -93,7 +93,7 @@ result_df %>%
 
 ## Problem 3
 
-#### Write a function to generate 5000 datasets from the model, while at the same time save $\hat_{\mu}$ and p-value.
+#### Write a function to generate 5000 datasets from the model, while at the same time save mu hat and p-value.
 
 ```{r}
 sim_stat <- function(mu, sigma, n){
