@@ -14,14 +14,17 @@ library(broom)
 
 ## Problem 2
 
-#### Load Data
+#### Load Data and Describe Dataset
 
 ```{r}
 homicide <-  read_csv("./homicide-data.csv")
 head(homicide)
 ```
 
-#### Create a city_state variable (e.g. “Baltimore, MD”) and then summarize within cities to obtain the total number of homicides and the number of unsolved homicides (those for which the disposition is “Closed without arrest” or “Open/No arrest”).
+The homicide dataset describes homicides in 50 large U.S. cities. This dataset have `r nrow(homicide)` rows, and `r ncol(homicide)` columns, there are 12 variables involving in the dataset, and those variables describes the case id, reported date, information of the victim(name, age, race, sex), city and state the case happened, the latitude and longtitude of the place that the case happened and the disposition status of the case.
+
+
+#### Create a city_state variable and then summarize within cities to obtain the total number of homicides and the number of unsolved homicides.
 
 ```{r}
 homicide <- homicide %>%
@@ -40,7 +43,7 @@ knitr::kable(homicide)
 ```
 
 
-#### For the city of Baltimore, MD, use the prop.test function to estimate the proportion of homicides that are unsolved; save the output of prop.test as an R object, apply the broom::tidy to this object and pull the estimated proportion and confidence intervals from the resulting tidy dataframe.
+#### For the city of Baltimore, MD, use the prop.test function to estimate the proportion of homicides that are unsolved; save the output of prop.test as an R object
 
 ```{r}
 baltimore_df <- homicide %>% filter(city_state == "Baltimore,MD")
@@ -54,7 +57,7 @@ prop.test(baltimore_df%>%pull(unsolved), baltimore_df%>%pull(total)) %>%
   select(estimate, conf.low, conf.high)
 ```
 
-#### Now run prop.test for each of the cities in your dataset, and extract both the proportion of unsolved homicides and the confidence interval for each. Do this within a “tidy” pipeline, making use of purrr::map, purrr::map2, list columns and unnest as necessary to create a tidy dataframe with estimated proportions and CIs for each city.
+#### Run prop.test for each of the cities in your dataset, and extract both the proportion of unsolved homicides and the confidence interval for each, and create a tidy dataframe with estimated proportions and CIs for each city.
 
 - first create a function to get estimate, and bounds for CIs.
 
@@ -75,7 +78,7 @@ result_df <- homicide %>%
 result_df
 ```
 
-#### Create a plot that shows the estimates and CIs for each city – check out geom_errorbar for a way to add error bars based on the upper and lower limits. Organize cities according to the proportion of unsolved homicides.
+#### Create a plot that shows the estimates and CIs for each city
 
 ```{r}
 result_df %>%
@@ -90,9 +93,90 @@ result_df %>%
 
 ## Problem 3
 
-#### Generate 5000 datasets from the model
+#### Write a function to generate 5000 datasets from the model, while at the same time save $\hat_{\mu}$ and p-value.
 
 ```{r}
+sim_stat <- function(mu, sigma, n){
+  output <- vector("list", 5000)
+  i = 1
+  while(i <= 5000){
+    sim_data = rnorm(n, mean = mu, sd = sigma)
+    
+    sim_stats = t.test(sim_data, mu = 0, conf.level = 0.95) %>% 
+    tidy() %>%
+    select(estimate, p.value)
+    
+    output[[i]] = sim_stats
+    
+    i = i+1
+  }
 
+  bind_rows(output)
+}
 ```
 
+#### Generate 5000 datasets from the model mu = 0, sigma = 5, n = 30, and get the estimate and stats from each test
+
+```{r}
+sim_stat(0,5,30)
+```
+
+
+
+#### Repeat the above for $\mu = \{1,2,3,4,5,6\}$, and we make a plot showing the proportion of times the null was rejected (the power of the test) on the y axis and the true value of mu hat on the x axis.
+
+
+```{r}
+power_df <- data.frame()
+
+for(i in 0:6) {
+  power_df[i+1,1] = i
+  power_df[i+1,2] = pull(sim_stat(i,5,30) %>% filter(p.value <= 0.05) %>% count()/5000)
+}
+```
+
+#### Make a plot of power and the true value of mu.
+
+```{r}
+power_df %>% transmute(true_mu = V1, power = V2) %>%
+  mutate(true_mu = as.numeric(true_mu)) %>%
+  ggplot(aes(x = true_mu, y = power)) +
+  geom_point(aes(color = true_mu, size = 3)) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "True Mu",
+    y = "Power",
+    title = "True Mu vs Power"
+  )
+  
+``` 
+
+From the plot, we can see that when the effect size increases, the power will increase and will be eventually close to 1.
+
+#### Make a plot showing the average estimate of $\hat{\mu}$ on the y axis and the true value of $\mu$ on the x axis and ake a second plot (or overlay on the first) the average estimate of $\hat{\mu}$ only in samples for which the null was rejected on the y axis and the true value of $\mu$ on the x axis.
+
+```{r}
+average_df <- data.frame()
+
+for(i in 0:6) {
+  average_df[i+1,1] = i
+  average_df[i+1,2] = sim_stat(i,5,30) %>% select(estimate) %>% colMeans()
+  average_df[i+1,3] = sim_stat(i,5,30) %>% filter(p.value <= 0.05) %>% select(estimate) %>% colMeans()
+}
+
+```
+```{r}
+average_df %>%
+  transmute(true_mu = V1, estimate_mean = V2, reject_mean = V3) %>%
+  pivot_longer(2:3, values_to = "mean_value", names_to = "mean_type") %>%
+  ggplot() +
+  geom_point(mapping = aes(x = true_mu, y = mean_value, color = mean_type)) +
+  geom_smooth(mapping = aes(x = true_mu, y = mean_value, color = mean_type), se = FALSE) +
+  labs(
+    x = "True Mu",
+    y = "Estimate of Mu",
+    title = "True Mu vs Power"
+  )
+```
+
+The true mean is approximately equal to the average estimate for all samples. However, in the plot of mean estimate for the rejected sample, the average estimate only approximates the true mean when the effect size is between 4 and 6. This shows that when effect size is large, the average estimate is a good approximation of the true value, and when the effect size is small, the the average estimate is not a good approximation of the true value.
